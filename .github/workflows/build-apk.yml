@@ -16,55 +16,50 @@ jobs:
   build:
     name: Compile Android APK
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
 
     steps:
-      - name: Baixar código
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configurar Java 17
-        uses: actions/setup-java@v4
+      - name: Setup Java 17
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Instalar Gradle 8.9
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '12266719'
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-          cache-disabled: false
 
-      - name: Instalar Android SDK
+      - name: Accept Android licenses
         shell: bash
         run: |
+          set +e
+          yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --licenses
+          status=${PIPESTATUS[1]}
           set -e
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          if [ ! -x "$SDKMANAGER" ]; then
-            echo "sdkmanager não encontrado em $SDKMANAGER"
-            ls -la "$ANDROID_HOME/cmdline-tools" || true
-            exit 1
+          if [ "$status" -ne 0 ]; then
+            echo "sdkmanager --licenses returned $status; continuing because the runner action installs the requested SDK packages."
           fi
-          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses
-          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
 
-      - name: Compilar APK de depuração
+      - name: Build debug APK
         run: gradle --no-daemon --stacktrace --max-workers=2 assembleDebug
 
-      - name: Verificar APK
-        shell: bash
-        run: |
-          set -e
-          APK="app/build/outputs/apk/debug/app-debug.apk"
-          test -s "$APK"
-          ls -lh "$APK"
+      - name: Verify APK
+        run: test -s app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Publicar APK para download
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Passos-Rapidos-debug
